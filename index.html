@@ -281,6 +281,20 @@
       background: #f7faf8;
     }
 
+    .reservation-item {
+      display: grid;
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid #c9d5cf;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .reservation-item.blocked {
+      border-color: #e3b7b2;
+      background: #fff7f6;
+    }
+
     @media (max-width: 960px) {
       main {
         padding: 10px 0 28px;
@@ -326,6 +340,20 @@
       <h1 id="title">予約フォーム</h1>
       <p>LINEで行っていた予約の流れを、フォーム上で進めます。</p>
     </header>
+
+    <section id="manageSection" class="hidden">
+      <h2 id="manageTitle">予約の変更・キャンセル</h2>
+      <p id="manageGuide" class="muted"></p>
+      <div id="manageReservations" class="choices"></div>
+      <div id="manageChangeArea" class="hidden">
+        <div id="manageSelected" class="summary"></div>
+        <button id="manageLoadMonthsButton" class="secondary" type="button">変更可能月を表示</button>
+        <div id="manageMonthList" class="button-grid"></div>
+        <div id="manageDateList" class="date-grid"></div>
+        <div id="manageTimeList" class="time-grid"></div>
+      </div>
+      <div id="manageStatus" class="status" aria-live="polite"></div>
+    </section>
 
     <form id="reservationForm">
       <section id="profileSection">
@@ -393,7 +421,7 @@
   <script>
     let appConfig = {
       businessName: '予約受付',
-      gasApiUrl: 'https://script.google.com/macros/s/AKfycby77_8XquIkN37Tgoghscx3JPdJxtSg5SuFrfXj5LwWItJUqrEv2SsJHZnpB4cG7te6/exec',
+      gasApiUrl: 'https://script.google.com/macros/s/AKfycbzr3qVMvsHwI92nguYAeej5Wz6O45rfNcKHjUfGqOD7HJeR7wtxyC-RTHoZc6_msWDK/exec',
       menuOptions: [
         { id: 'brow', label: '眉' },
         { id: 'lip', label: 'リップ' },
@@ -403,6 +431,7 @@
 
     const state = {
       reservationToken: new URLSearchParams(location.search).get('token') || '',
+      requestedAction: new URLSearchParams(location.search).get('action') || 'new',
       identityReady: false,
       displayName: '',
       knownUser: null,
@@ -411,6 +440,13 @@
       selectedDate: '',
       selectedSlot: null,
       slots: []
+    };
+
+    const manageState = {
+      reservations: [],
+      selectedReservation: null,
+      selectedDate: '',
+      selectedSlot: null
     };
 
     const form = document.querySelector('#reservationForm');
@@ -430,13 +466,22 @@
     const submitButton = form.querySelector('button[type="submit"]');
     const photoSection = document.querySelector('#photoSection');
     const photoInput = document.querySelector('#photoInput');
+    const manageSection = document.querySelector('#manageSection');
+    const manageReservations = document.querySelector('#manageReservations');
+    const manageChangeArea = document.querySelector('#manageChangeArea');
+    const manageSelected = document.querySelector('#manageSelected');
+    const manageMonthList = document.querySelector('#manageMonthList');
+    const manageDateList = document.querySelector('#manageDateList');
+    const manageTimeList = document.querySelector('#manageTimeList');
+    const manageStatus = document.querySelector('#manageStatus');
+    const manageLoadMonthsButton = document.querySelector('#manageLoadMonthsButton');
 
     async function apiCall(name, payload) {
       if (!appConfig.gasApiUrl || location.protocol === 'file:') {
         return previewApi(name);
       }
 
-      if (name !== 'submitReservation') {
+      if (!['submitReservation', 'changeReservation', 'cancelReservation'].includes(name)) {
         return jsonpApiCall(name, payload);
       }
 
@@ -900,6 +945,189 @@
     });
     form.addEventListener('submit', submitReservation);
 
+    function setManageStatus(message, isError) {
+      manageStatus.className = isError ? 'status error' : 'status';
+      manageStatus.textContent = message || '';
+    }
+
+    async function initializeManagement() {
+      form.classList.add('hidden');
+      manageSection.classList.remove('hidden');
+      const isCancel = state.requestedAction === 'cancel';
+      document.querySelector('#manageTitle').textContent = isCancel ? '予約のキャンセル' : '予約の変更';
+      document.querySelector('#manageGuide').textContent =
+        '予約開始の24時間以内は、直接電話かチャットにてお問い合わせください。';
+
+      let result;
+      try {
+        result = await apiCall('getManageState', {
+          reservationToken: state.reservationToken,
+          action: state.requestedAction
+        });
+      } catch (error) {
+        setManageStatus(error.message || String(error), true);
+        return;
+      }
+
+      if (!result.ok) {
+        setManageStatus(result.error || '予約情報を取得できませんでした。', true);
+        return;
+      }
+
+      manageState.reservations = result.reservations || [];
+      renderManageReservations();
+    }
+
+    function renderManageReservations() {
+      if (!manageState.reservations.length) {
+        manageReservations.innerHTML = '<div class="empty">変更・キャンセルできる今後の予約はありません。</div>';
+        return;
+      }
+
+      manageReservations.innerHTML = manageState.reservations.map((reservation) => `
+        <div class="reservation-item${reservation.canSelfService ? '' : ' blocked'}">
+          <strong>${reservation.date} ${reservation.startTime}-${reservation.endTime}</strong>
+          <span>${reservation.menuLabel}／${reservation.duration}分</span>
+          ${reservation.canSelfService
+            ? `<button type="button" data-manage-id="${reservation.reservationId}">
+                ${state.requestedAction === 'cancel' ? 'この予約をキャンセル' : 'この予約を変更'}
+              </button>`
+            : `<div class="error">${reservation.contactMessage}</div>`}
+        </div>
+      `).join('');
+    }
+
+    manageReservations.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-manage-id]');
+      if (!button) return;
+      const reservation = manageState.reservations
+        .find((item) => item.reservationId === button.dataset.manageId);
+      if (!reservation) return;
+
+      if (state.requestedAction === 'cancel') {
+        if (!confirm(`${reservation.date} ${reservation.startTime}の予約をキャンセルします。よろしいですか？`)) return;
+        button.disabled = true;
+        setManageStatus('キャンセルしています...', false);
+        try {
+          const result = await apiCall('cancelReservation', {
+            reservationToken: state.reservationToken,
+            reservationId: reservation.reservationId
+          });
+          if (!result.ok) throw new Error(result.error || 'キャンセルできませんでした。');
+          manageReservations.innerHTML = '';
+          setManageStatus('予約をキャンセルしました。画面を閉じてください。', false);
+        } catch (error) {
+          button.disabled = false;
+          setManageStatus(error.message || String(error), true);
+        }
+        return;
+      }
+
+      manageState.selectedReservation = reservation;
+      manageChangeArea.classList.remove('hidden');
+      manageSelected.innerHTML = `
+        <strong>変更する予約</strong>
+        <span>${reservation.date} ${reservation.startTime}-${reservation.endTime}</span>
+        <span>${reservation.menuLabel}／${reservation.duration}分</span>
+      `;
+      manageMonthList.innerHTML = '';
+      manageDateList.innerHTML = '';
+      manageTimeList.innerHTML = '';
+      setManageStatus('', false);
+    });
+
+    manageLoadMonthsButton.addEventListener('click', async () => {
+      const reservation = manageState.selectedReservation;
+      if (!reservation) return;
+      manageLoadMonthsButton.disabled = true;
+      manageMonthList.innerHTML = '<div class="empty">変更可能月を確認しています...</div>';
+      try {
+        const result = await apiCall('getReservableMonths', {
+          duration: reservation.duration,
+          menuIds: reservation.menuIds,
+          customerType: reservation.customerType,
+          excludeEventId: reservation.calendarId
+        });
+        if (!result.ok || !result.months.length) throw new Error('変更可能な月がありません。');
+        manageMonthList.innerHTML = result.months.map((month) =>
+          `<button class="pill" type="button" data-manage-month="${month}">${month.replace('-', '年')}月</button>`
+        ).join('');
+      } catch (error) {
+        manageMonthList.innerHTML = `<div class="empty">${error.message || error}</div>`;
+      } finally {
+        manageLoadMonthsButton.disabled = false;
+      }
+    });
+
+    manageMonthList.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-manage-month]');
+      if (!button || !manageState.selectedReservation) return;
+      Array.from(manageMonthList.querySelectorAll('button')).forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+      const [year, month] = button.dataset.manageMonth.split('-').map(Number);
+      const reservation = manageState.selectedReservation;
+      manageDateList.innerHTML = '<div class="empty">変更可能日を確認しています...</div>';
+      const result = await apiCall('getReservableDates', {
+        year,
+        month,
+        duration: reservation.duration,
+        menuIds: reservation.menuIds,
+        customerType: reservation.customerType,
+        excludeEventId: reservation.calendarId
+      });
+      manageDateList.innerHTML = result.ok && result.dates.length
+        ? result.dates.map((date) => `<button class="pill" type="button" data-manage-date="${date.value}">${date.label}</button>`).join('')
+        : '<div class="empty">変更可能な日付がありません。</div>';
+    });
+
+    manageDateList.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-manage-date]');
+      if (!button || !manageState.selectedReservation) return;
+      Array.from(manageDateList.querySelectorAll('button')).forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+      manageState.selectedDate = button.dataset.manageDate;
+      const reservation = manageState.selectedReservation;
+      manageTimeList.innerHTML = '<div class="empty">変更可能時間を確認しています...</div>';
+      const result = await apiCall('getFreeTimeProposal', {
+        date: manageState.selectedDate,
+        duration: reservation.duration,
+        menuIds: reservation.menuIds,
+        customerType: reservation.customerType,
+        excludeEventId: reservation.calendarId
+      });
+      manageTimeList.innerHTML = result.ok
+        ? result.slots.map((slot) =>
+          `<button class="pill" type="button" data-manage-time="${slot.startTime}" data-manage-end="${slot.endTime}">
+            ${slot.startTime}-${slot.endTime}
+          </button>`
+        ).join('')
+        : `<div class="empty">${result.error || '変更可能な時間がありません。'}</div>`;
+    });
+
+    manageTimeList.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-manage-time]');
+      if (!button || !manageState.selectedReservation) return;
+      const reservation = manageState.selectedReservation;
+      if (!confirm(`${manageState.selectedDate} ${button.dataset.manageTime}-${button.dataset.manageEnd}へ変更します。よろしいですか？`)) return;
+      button.disabled = true;
+      setManageStatus('予約を変更しています...', false);
+      try {
+        const result = await apiCall('changeReservation', {
+          reservationToken: state.reservationToken,
+          reservationId: reservation.reservationId,
+          date: manageState.selectedDate,
+          startTime: button.dataset.manageTime
+        });
+        if (!result.ok) throw new Error(result.error || '変更できませんでした。');
+        manageReservations.innerHTML = '';
+        manageChangeArea.classList.add('hidden');
+        setManageStatus(`予約を${result.date} ${result.startTime}-${result.endTime}へ変更しました。画面を閉じてください。`, false);
+      } catch (error) {
+        button.disabled = false;
+        setManageStatus(error.message || String(error), true);
+      }
+    });
+
     async function initialize() {
       try {
         appConfig = { ...appConfig, ...(await apiCall('getClientConfig')) };
@@ -909,6 +1137,11 @@
 
       document.querySelector('#title').textContent = appConfig.businessName;
       renderMenus();
+
+      if (state.requestedAction === 'change' || state.requestedAction === 'cancel') {
+        await initializeManagement();
+        return;
+      }
 
       try {
         if (!state.reservationToken) {
