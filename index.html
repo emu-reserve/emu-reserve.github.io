@@ -371,19 +371,19 @@
         </div>
       </section>
 
+      <section id="menuSection">
+        <h2>2. メニュー選択</h2>
+        <div id="menuList" class="choices"></div>
+        <div id="durationBox" class="summary">メニューを選ぶと施術時間を計算します。</div>
+      </section>
+
       <section id="photoSection">
-        <h2>2. 写真添付</h2>
+        <h2>3. 写真添付</h2>
         <p class="muted">予約希望部位の写真を添付してください。初回の方もこちらから添付できます。</p>
         <label>
           写真
           <input id="photoInput" type="file" accept="image/*">
         </label>
-      </section>
-
-      <section id="menuSection">
-        <h2>3. メニュー選択</h2>
-        <div id="menuList" class="choices"></div>
-        <div id="durationBox" class="summary">メニューを選ぶと施術時間を計算します。</div>
       </section>
 
       <section id="monthSection">
@@ -610,8 +610,8 @@
       }
 
       const offset = isRepeater ? -1 : 0;
+      document.querySelector('#menuSection h2').textContent = '2. メニュー選択';
       const labels = [
-        ['#menuSection h2', 3, 'メニュー選択'],
         ['#monthSection h2', 4, '予約可能月を選択'],
         ['#dateSection h2', 5, '予約可能日を選択'],
         ['#timeSection h2', 6, '時間確認'],
