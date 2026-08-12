@@ -672,9 +672,10 @@
     }
 
     function renderMenus() {
+      const selectedMenuIds = new Set(getMenuIds());
       menuList.innerHTML = appConfig.menuOptions.map((menu) => `
         <label class="choice">
-          <input type="checkbox" name="menuIds" value="${menu.id}">
+          <input type="checkbox" name="menuIds" value="${menu.id}"${selectedMenuIds.has(menu.id) ? ' checked' : ''}>
           <strong>${menu.label}</strong>
           <span>複数選択できます。</span>
         </label>
@@ -989,6 +990,15 @@
       if (!state.identityReady) {
         clearStatus();
         statusEl.textContent = 'お客様情報を再確認しています…';
+        const selectionSnapshot = {
+          name: form.elements.name.value,
+          birth: form.elements.birth.value,
+          menuIds: getMenuIds(),
+          selectedMonth: state.selectedMonth,
+          selectedDate: state.selectedDate,
+          selectedSlot: state.selectedSlot,
+          slots: state.slots.slice()
+        };
         try {
           const initialState = await apiCallWithRetry('getInitialState', {
             reservationToken: state.reservationToken
@@ -997,6 +1007,18 @@
             throw new Error(initialState.error || '予約リンクを確認できません。');
           }
           applyInitialState(initialState);
+          if (!initialState.user) {
+            form.elements.name.value = selectionSnapshot.name;
+            form.elements.birth.value = selectionSnapshot.birth;
+          }
+          Array.from(form.elements.menuIds || []).forEach((input) => {
+            input.checked = selectionSnapshot.menuIds.includes(input.value);
+          });
+          state.selectedMonth = selectionSnapshot.selectedMonth;
+          state.selectedDate = selectionSnapshot.selectedDate;
+          state.selectedSlot = selectionSnapshot.selectedSlot;
+          state.slots = selectionSnapshot.slots;
+          updateSummary();
         } catch (error) {
           setError('お客様情報を確認できませんでした。通信状況を確認してページを再読み込みするか、LINEに届いた最新のリンクから開き直してください。');
           return;
@@ -1009,8 +1031,15 @@
       const menuIds = getMenuIds();
       const duration = getDuration();
 
-      if (!name || !birth || !customerType || !menuIds.length || !duration || !state.selectedDate || !state.selectedSlot) {
-        setError('お客様情報、メニュー、日付、時間をすべて選択してください。');
+      const missingItems = [];
+      if (!name) missingItems.push('お名前');
+      if (!birth) missingItems.push('生年月日');
+      if (!customerType) missingItems.push('お客様区分');
+      if (!menuIds.length || !duration) missingItems.push('メニュー');
+      if (!state.selectedDate) missingItems.push('予約日');
+      if (!state.selectedSlot) missingItems.push('予約時間');
+      if (missingItems.length) {
+        setError(`未選択の項目があります：${missingItems.join('、')}`);
         return;
       }
 
