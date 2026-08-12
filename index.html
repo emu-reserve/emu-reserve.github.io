@@ -523,7 +523,9 @@
         return previewApi(name);
       }
 
-      if (!['submitReservation', 'changeReservation', 'cancelReservation', 'submitAbsenceNotice'].includes(name)) {
+      // 写真を含む新規予約だけPOSTを使う。変更・欠席連絡はデータ量が小さいため、
+      // LINE内ブラウザでPOST後のGASリダイレクトが404になる問題を避けてJSONPを使う。
+      if (name !== 'submitReservation') {
         return jsonpApiCall(name, payload);
       }
 
