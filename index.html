@@ -118,12 +118,26 @@
 
     input[type="date"] {
       display: block;
-      width: 100%;
+      box-sizing: border-box;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-inline-size: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    input[type="date"]::-webkit-date-and-time-value {
+      min-width: 0;
+      text-align: left;
+    }
+
+    #profileInputs,
+    #profileInputs label {
       max-width: 100%;
       min-width: 0;
-      appearance: auto;
-      -webkit-appearance: auto;
-      text-align: left;
+      overflow: hidden;
     }
 
     button {
@@ -532,9 +546,10 @@
         return previewApi(name);
       }
 
-      // 写真を含む新規予約だけPOSTを使う。変更・欠席連絡はデータ量が小さいため、
-      // LINE内ブラウザでPOST後のGASリダイレクトが404になる問題を避けてJSONPを使う。
-      if (name !== 'submitReservation') {
+      // 写真データがない処理はJSONPを使い、LINE内ブラウザで
+      // GASのPOSTリダイレクトが404になる問題を避ける。
+      const hasPhotoData = Boolean(payload && payload.photoBase64);
+      if (name !== 'submitReservation' || !hasPhotoData) {
         return jsonpApiCall(name, payload);
       }
 
@@ -600,6 +615,21 @@
         script.src = `${appConfig.gasApiUrl}?${params.toString()}`;
         document.head.appendChild(script);
       });
+    }
+
+    async function apiCallWithRetry(name, payload, attempts = 2) {
+      let lastError;
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          return await apiCall(name, payload);
+        } catch (error) {
+          lastError = error;
+          if (attempt < attempts) {
+            await new Promise((resolve) => window.setTimeout(resolve, 800));
+          }
+        }
+      }
+      throw lastError;
     }
 
     function previewApi(name) {
@@ -951,16 +981,33 @@
     async function submitReservation(event) {
       event.preventDefault();
 
+      if (!state.reservationToken) {
+        setError('予約リンクを確認できません。LINEトークで「予約」と送り、届いたリンクから開き直してください。');
+        return;
+      }
+
+      if (!state.identityReady) {
+        clearStatus();
+        statusEl.textContent = 'お客様情報を再確認しています…';
+        try {
+          const initialState = await apiCallWithRetry('getInitialState', {
+            reservationToken: state.reservationToken
+          }, 3);
+          if (!initialState.ok || !initialState.identityReady) {
+            throw new Error(initialState.error || '予約リンクを確認できません。');
+          }
+          applyInitialState(initialState);
+        } catch (error) {
+          setError('お客様情報を確認できませんでした。通信状況を確認してページを再読み込みするか、LINEに届いた最新のリンクから開き直してください。');
+          return;
+        }
+      }
+
       const name = form.elements.name.value.trim();
       const birth = form.elements.birth.value.trim();
       const customerType = state.customerType;
       const menuIds = getMenuIds();
       const duration = getDuration();
-
-      if (!state.identityReady || !state.reservationToken) {
-        setError('予約リンクを確認できません。LINEトークで「予約」と送り、届いたリンクから開き直してください。');
-        return;
-      }
 
       if (!name || !birth || !customerType || !menuIds.length || !duration || !state.selectedDate || !state.selectedSlot) {
         setError('お客様情報、メニュー、日付、時間をすべて選択してください。');
@@ -1347,7 +1394,7 @@
         if (!state.reservationToken) {
           throw new Error('LINEトークで「予約」と送り、届いたリンクから開いてください。');
         }
-        const initialState = await apiCall('getInitialState', {
+        const initialState = await apiCallWithRetry('getInitialState', {
           reservationToken: state.reservationToken
         });
         if (!initialState.ok) throw new Error(initialState.error || '予約リンクを確認できません。');
@@ -1357,7 +1404,7 @@
         profileLoading.classList.add('hidden');
         profileInputs.classList.remove('hidden');
         state.identityReady = false;
-        submitButton.disabled = true;
+        submitButton.disabled = false;
         setError(error.message || '予約リンクを確認できません。');
       }
 
