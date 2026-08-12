@@ -395,8 +395,9 @@
     <form id="reservationForm">
       <section id="profileSection">
         <h2>1. お客様情報</h2>
+        <div id="profileLoading" class="empty">お客様情報を確認しています。入力せずに少しお待ちください…</div>
         <div id="knownUser" class="summary hidden"></div>
-        <div id="profileInputs" class="row">
+        <div id="profileInputs" class="row hidden">
           <label>
             お名前
             <input name="name" autocomplete="name">
@@ -488,6 +489,7 @@
 
     const form = document.querySelector('#reservationForm');
     const knownUser = document.querySelector('#knownUser');
+    const profileLoading = document.querySelector('#profileLoading');
     const profileInputs = document.querySelector('#profileInputs');
     const menuList = document.querySelector('#menuList');
     const durationBox = document.querySelector('#durationBox');
@@ -650,6 +652,7 @@
     }
 
     function applyInitialState(initialState) {
+      profileLoading.classList.add('hidden');
       state.identityReady = Boolean(initialState.identityReady);
       state.displayName = initialState.displayName || '';
       state.customerType = initialState.customerType || (initialState.user ? 'リピーター' : '初回');
@@ -1323,17 +1326,20 @@
     });
 
     async function initialize() {
-      try {
-        appConfig = { ...appConfig, ...(await apiCall('getClientConfig')) };
-      } catch (error) {
-        console.warn('Server config unavailable', error);
-      }
-
       document.querySelector('#title').textContent = appConfig.businessName;
       renderMenus();
 
+      const configPromise = apiCall('getClientConfig')
+        .then((config) => {
+          appConfig = { ...appConfig, ...(config || {}) };
+          document.querySelector('#title').textContent = appConfig.businessName;
+          renderMenus();
+        })
+        .catch((error) => console.warn('Server config unavailable', error));
+
       if (state.requestedAction === 'manage' || state.requestedAction === 'change' || state.requestedAction === 'cancel') {
         await initializeManagement();
+        await configPromise;
         return;
       }
 
@@ -1348,10 +1354,14 @@
         applyInitialState(initialState);
       } catch (error) {
         console.warn('Initial state unavailable', error);
+        profileLoading.classList.add('hidden');
+        profileInputs.classList.remove('hidden');
         state.identityReady = false;
         submitButton.disabled = true;
         setError(error.message || '予約リンクを確認できません。');
       }
+
+      await configPromise;
     }
 
     initialize();
