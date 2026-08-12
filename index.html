@@ -137,6 +137,11 @@
       color: #13795b;
     }
 
+    button.secondary.active {
+      background: #13795b;
+      color: #fff;
+    }
+
     button:disabled {
       border-color: #9cadac;
       background: #9cadac;
@@ -1088,8 +1093,13 @@
 
     function showReasonSelection(nextAction) {
       manageState.nextAction = nextAction;
+      manageState.selectedDate = '';
+      manageState.selectedSlot = null;
       manageReasonArea.classList.remove('hidden');
       manageAbsenceConfirm.classList.add('hidden');
+      manageChangeArea.classList.add('hidden');
+      chooseChangeButton.classList.toggle('active', nextAction === 'change');
+      chooseAbsenceButton.classList.toggle('active', nextAction === 'absence');
       manageReasonList.innerHTML = contactReasons.map((reason) => `
         <label class="choice">
           <input type="radio" name="manageReason" value="${reason}">
@@ -1098,6 +1108,9 @@
       `).join('');
       manageOtherReason.value = '';
       manageOtherReasonLabel.classList.add('hidden');
+      manageMonthList.innerHTML = '';
+      manageDateList.innerHTML = '';
+      manageTimeList.innerHTML = '';
       setManageStatus('', false);
     }
 
