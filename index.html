@@ -536,6 +536,15 @@
       }
     }
 
+    async function confirmSubmissionCompleted(reservationToken) {
+      try {
+        const result = await jsonpApiCall('getSubmissionStatus', { reservationToken });
+        return Boolean(result && result.ok && result.completed);
+      } catch (error) {
+        return false;
+      }
+    }
+
     function fetchWithTimeout(url, options, timeoutMs) {
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -969,7 +978,13 @@
           : '予約を確定しました。画面を閉じてください。';
 
       } catch (error) {
-        setError(error.message || '予約確定に失敗しました。');
+        const completed = await confirmSubmissionCompleted(state.reservationToken);
+        if (completed) {
+          statusEl.className = 'status';
+          statusEl.textContent = '予約を確定しました。画面を閉じてください。';
+        } else {
+          setError(error.message || '予約確定に失敗しました。');
+        }
       } finally {
         submitButton.disabled = false;
         submitButton.textContent = originalSubmitLabel;
