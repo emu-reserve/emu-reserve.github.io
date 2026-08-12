@@ -566,8 +566,8 @@
         const timer = window.setTimeout(() => {
           delete window[callbackName];
           script.remove();
-          reject(new Error('GAS APIの応答がありません。GASのコード貼り替えと再デプロイを確認してください。'));
-        }, 20000);
+          reject(new Error('情報の取得に時間がかかっています。少し時間を置いてページを再読み込みするか、LINEに届いた最新のリンクから開き直してください。'));
+        }, 60000);
         const params = new URLSearchParams({
           action: name,
           payload: JSON.stringify(payload || {}),
@@ -585,7 +585,7 @@
           window.clearTimeout(timer);
           delete window[callbackName];
           script.remove();
-          reject(new Error('GAS APIに接続できませんでした'));
+          reject(new Error('情報を取得できませんでした。通信状況を確認し、ページを再読み込みするか、LINEに届いた最新のリンクから開き直してください。'));
         };
 
         script.src = `${appConfig.gasApiUrl}?${params.toString()}`;
@@ -782,7 +782,7 @@
       try {
         result = await apiCall('getReservableMonths', { duration, menuIds, customerType });
       } catch (error) {
-        monthList.innerHTML = `<div class="empty">予約可能月を取得できませんでした。GASを最新版で再デプロイしてください。<br>${error.message || error}</div>`;
+        monthList.innerHTML = `<div class="empty">${getCustomerFacingError(error)}</div>`;
         loadMonthsButton.disabled = false;
         return;
       }
@@ -816,7 +816,7 @@
           customerType: state.customerType
         });
       } catch (error) {
-        dateList.innerHTML = `<div class="empty">予約可能日を取得できませんでした。<br>${error.message || error}</div>`;
+        dateList.innerHTML = `<div class="empty">${getCustomerFacingError(error)}</div>`;
         return;
       }
 
@@ -1025,6 +1025,14 @@
       manageStatus.textContent = message || '';
     }
 
+    function getCustomerFacingError(error) {
+      const message = error && error.message ? error.message : String(error || '');
+      if (/GAS|API|HTTP|Failed to fetch|Load failed|AbortError|接続|応答/.test(message)) {
+        return '情報の取得に時間がかかっています。少し時間を置いてページを再読み込みするか、LINEに届いた最新のリンクから開き直してください。';
+      }
+      return message || '情報を取得できませんでした。ページを再読み込みしてください。';
+    }
+
     async function initializeManagement() {
       form.classList.add('hidden');
       manageSection.classList.remove('hidden');
@@ -1039,7 +1047,7 @@
           action: state.requestedAction
         });
       } catch (error) {
-        setManageStatus(error.message || String(error), true);
+        setManageStatus(getCustomerFacingError(error), true);
         return;
       }
 
@@ -1195,7 +1203,7 @@
         manageAbsenceConfirm.classList.add('hidden');
         setManageStatus(`${formatManageDate(result.date || reservation.date)}の欠席連絡を受け付けました。ご連絡ありがとうございます。`, false);
       } catch (error) {
-        setManageStatus(error.message || String(error), true);
+        setManageStatus(getCustomerFacingError(error), true);
       } finally {
         submitAbsenceButton.disabled = false;
       }
@@ -1292,7 +1300,7 @@
         setManageStatus(`予約を${result.date} ${result.startTime}-${result.endTime}へ変更しました。画面を閉じてください。`, false);
       } catch (error) {
         button.disabled = false;
-        setManageStatus(error.message || String(error), true);
+        setManageStatus(getCustomerFacingError(error), true);
       }
     });
 
