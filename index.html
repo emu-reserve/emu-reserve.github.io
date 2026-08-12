@@ -527,7 +527,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: name, payload: payload || {} })
-        }, 20000);
+        }, 120000);
 
         if (!response.ok) throw new Error(`GAS API HTTP ${response.status}`);
         return await response.json();
@@ -941,9 +941,11 @@
         return;
       }
 
+      const originalSubmitLabel = submitButton.textContent;
       submitButton.disabled = true;
+      submitButton.textContent = '予約を確定しています…';
       clearStatus();
-      statusEl.textContent = '予約を確定しています...';
+      statusEl.textContent = '予約を登録しています。完了するまで画面を閉じずにお待ちください。';
 
       try {
         const photo = await fileToBase64(photoInput.files[0]);
@@ -970,6 +972,7 @@
         setError(error.message || '予約確定に失敗しました。');
       } finally {
         submitButton.disabled = false;
+        submitButton.textContent = originalSubmitLabel;
       }
     }
 
