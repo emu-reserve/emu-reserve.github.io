@@ -342,11 +342,36 @@
     </header>
 
     <section id="manageSection" class="hidden">
-      <h2 id="manageTitle">予約の変更・キャンセル</h2>
+      <h2 id="manageTitle">変更・欠席連絡</h2>
       <p id="manageGuide" class="muted"></p>
       <div id="manageReservations" class="choices"></div>
+      <div id="manageActionArea" class="hidden">
+        <div id="manageActionSelected" class="summary"></div>
+        <p><strong>ご希望の手続きを選択してください</strong></p>
+        <div class="button-grid">
+          <button id="chooseChangeButton" class="secondary" type="button">日時を変更する</button>
+          <button id="chooseAbsenceButton" class="secondary" type="button">欠席を連絡する</button>
+        </div>
+      </div>
+      <div id="manageReasonArea" class="hidden">
+        <p><strong>欠席・変更理由を選択してください</strong></p>
+        <div id="manageReasonList" class="choices"></div>
+        <label id="manageOtherReasonLabel" class="hidden">
+          その他の理由
+          <textarea id="manageOtherReason" rows="3"></textarea>
+        </label>
+      </div>
+      <div id="manageAbsenceConfirm" class="hidden summary">
+        <p>利用予定に合わせて職員配置や活動準備を行っています。予定変更が分かった時点で、できるだけ早めのご連絡をお願いします。</p>
+        <strong id="manageAbsenceQuestion"></strong>
+        <div class="button-grid">
+          <button id="submitAbsenceButton" type="button">欠席連絡を送信する</button>
+          <button id="backFromAbsenceButton" class="secondary" type="button">戻る</button>
+        </div>
+      </div>
       <div id="manageChangeArea" class="hidden">
         <div id="manageSelected" class="summary"></div>
+        <p class="muted">利用予定に合わせて職員配置や活動準備を行っています。予定変更が分かった時点で、できるだけ早めのご連絡をお願いします。</p>
         <button id="manageLoadMonthsButton" class="secondary" type="button">変更可能月を表示</button>
         <div id="manageMonthList" class="button-grid"></div>
         <div id="manageDateList" class="date-grid"></div>
@@ -469,6 +494,18 @@
     const manageSection = document.querySelector('#manageSection');
     const manageReservations = document.querySelector('#manageReservations');
     const manageChangeArea = document.querySelector('#manageChangeArea');
+    const manageActionArea = document.querySelector('#manageActionArea');
+    const manageActionSelected = document.querySelector('#manageActionSelected');
+    const chooseChangeButton = document.querySelector('#chooseChangeButton');
+    const chooseAbsenceButton = document.querySelector('#chooseAbsenceButton');
+    const manageReasonArea = document.querySelector('#manageReasonArea');
+    const manageReasonList = document.querySelector('#manageReasonList');
+    const manageOtherReasonLabel = document.querySelector('#manageOtherReasonLabel');
+    const manageOtherReason = document.querySelector('#manageOtherReason');
+    const manageAbsenceConfirm = document.querySelector('#manageAbsenceConfirm');
+    const manageAbsenceQuestion = document.querySelector('#manageAbsenceQuestion');
+    const submitAbsenceButton = document.querySelector('#submitAbsenceButton');
+    const backFromAbsenceButton = document.querySelector('#backFromAbsenceButton');
     const manageSelected = document.querySelector('#manageSelected');
     const manageMonthList = document.querySelector('#manageMonthList');
     const manageDateList = document.querySelector('#manageDateList');
@@ -481,7 +518,7 @@
         return previewApi(name);
       }
 
-      if (!['submitReservation', 'changeReservation', 'cancelReservation'].includes(name)) {
+      if (!['submitReservation', 'changeReservation', 'cancelReservation', 'submitAbsenceNotice'].includes(name)) {
         return jsonpApiCall(name, payload);
       }
 
@@ -561,7 +598,20 @@
             { startTime: '14:00', endTime: '16:30', label: '2026年7月20日(月) 14:00-16:30' }
           ]
         },
-        submitReservation: { ok: true, preview: true }
+        getManageState: {
+          ok: true,
+          action: 'manage',
+          deadlineHours: 24,
+          reservations: [{
+            reservationId: 'preview-reservation', calendarId: 'preview-reservation',
+            name: 'プレビュー', customerType: 'リピーター', menuLabel: '眉', menuIds: ['brow'],
+            duration: 120, date: '2026-08-18', startTime: '14:00', endTime: '16:00',
+            status: '予約済', canSelfService: true, contactMessage: ''
+          }]
+        },
+        submitReservation: { ok: true, preview: true },
+        submitAbsenceNotice: { ok: true, date: '2026-08-18', preview: true },
+        changeReservation: { ok: true, date: '2026-08-25', startTime: '14:00', endTime: '16:00', preview: true }
       };
       return Promise.resolve(preview[name]);
     }
@@ -953,10 +1003,9 @@
     async function initializeManagement() {
       form.classList.add('hidden');
       manageSection.classList.remove('hidden');
-      const isCancel = state.requestedAction === 'cancel';
-      document.querySelector('#manageTitle').textContent = isCancel ? '予約のキャンセル' : '予約の変更';
+      document.querySelector('#manageTitle').textContent = '変更・欠席連絡';
       document.querySelector('#manageGuide').textContent =
-        '予約開始の24時間以内は、直接電話かチャットにてお問い合わせください。';
+        '変更・欠席する利用予定を選択してください。予約開始の24時間以内は、直接電話かチャットにてお問い合わせください。';
 
       let result;
       try {
@@ -980,7 +1029,7 @@
 
     function renderManageReservations() {
       if (!manageState.reservations.length) {
-        manageReservations.innerHTML = '<div class="empty">変更・キャンセルできる今後の予約はありません。</div>';
+        manageReservations.innerHTML = '<div class="empty">変更・欠席連絡の対象となる今後の利用予定はありません。</div>';
         return;
       }
 
@@ -990,7 +1039,7 @@
           <span>${reservation.menuLabel}／${reservation.duration}分</span>
           ${reservation.canSelfService
             ? `<button type="button" data-manage-id="${reservation.reservationId}">
-                ${state.requestedAction === 'cancel' ? 'この予約をキャンセル' : 'この予約を変更'}
+                この利用予定を選択
               </button>`
             : `<div class="error">${reservation.contactMessage}</div>`}
         </div>
@@ -1004,29 +1053,84 @@
         .find((item) => item.reservationId === button.dataset.manageId);
       if (!reservation) return;
 
-      if (state.requestedAction === 'cancel') {
-        if (!confirm(`${reservation.date} ${reservation.startTime}の予約をキャンセルします。よろしいですか？`)) return;
-        button.disabled = true;
-        setManageStatus('キャンセルしています...', false);
-        try {
-          const result = await apiCall('cancelReservation', {
-            reservationToken: state.reservationToken,
-            reservationId: reservation.reservationId
-          });
-          if (!result.ok) throw new Error(result.error || 'キャンセルできませんでした。');
-          manageReservations.innerHTML = '';
-          setManageStatus('予約をキャンセルしました。画面を閉じてください。', false);
-        } catch (error) {
-          button.disabled = false;
-          setManageStatus(error.message || String(error), true);
-        }
+      manageState.selectedReservation = reservation;
+      manageActionArea.classList.remove('hidden');
+      manageChangeArea.classList.add('hidden');
+      manageReasonArea.classList.add('hidden');
+      manageAbsenceConfirm.classList.add('hidden');
+      manageActionSelected.innerHTML = `
+        <strong>選択した利用予定</strong>
+        <span>${reservation.date} ${reservation.startTime}-${reservation.endTime}</span>
+        <span>${reservation.menuLabel}／${reservation.duration}分</span>
+      `;
+      setManageStatus('', false);
+    });
+
+    const contactReasons = ['体調不良', '家庭の都合', '学校・園の行事', '他の予定との重複', 'その他'];
+
+    function showReasonSelection(nextAction) {
+      manageState.nextAction = nextAction;
+      manageReasonArea.classList.remove('hidden');
+      manageAbsenceConfirm.classList.add('hidden');
+      manageReasonList.innerHTML = contactReasons.map((reason) => `
+        <label class="choice">
+          <input type="radio" name="manageReason" value="${reason}">
+          <strong>${reason}</strong>
+        </label>
+      `).join('');
+      manageOtherReason.value = '';
+      manageOtherReasonLabel.classList.add('hidden');
+      setManageStatus('', false);
+    }
+
+    chooseChangeButton.addEventListener('click', () => showReasonSelection('change'));
+    chooseAbsenceButton.addEventListener('click', () => showReasonSelection('absence'));
+
+    manageReasonList.addEventListener('change', () => {
+      const selected = manageReasonList.querySelector('input[name="manageReason"]:checked');
+      manageOtherReasonLabel.classList.toggle('hidden', !selected || selected.value !== 'その他');
+      if (!selected) return;
+      if (selected.value === 'その他' && !manageOtherReason.value.trim()) {
+        manageAbsenceConfirm.classList.add('hidden');
+        manageChangeArea.classList.add('hidden');
         return;
       }
+      continueAfterReason();
+    });
 
-      manageState.selectedReservation = reservation;
+    manageOtherReason.addEventListener('input', () => {
+      if (manageOtherReason.value.trim()) continueAfterReason();
+    });
+
+    function continueAfterReason() {
+      if (manageState.nextAction === 'absence') {
+        const reservation = manageState.selectedReservation;
+        manageAbsenceQuestion.textContent = `${formatManageDate(reservation.date)}の利用について、欠席連絡を送信しますか？`;
+        manageAbsenceConfirm.classList.remove('hidden');
+      } else {
+        openChangeSelection();
+      }
+    }
+
+    function formatManageDate(dateText) {
+      const parts = String(dateText || '').split('-').map(Number);
+      return parts.length === 3 ? `${parts[1]}月${parts[2]}日` : dateText;
+    }
+
+    function getSelectedReason() {
+      const selected = manageReasonList.querySelector('input[name="manageReason"]:checked');
+      if (!selected) throw new Error('理由を選択してください。');
+      if (selected.value === 'その他' && !manageOtherReason.value.trim()) {
+        throw new Error('その他の理由を入力してください。');
+      }
+      return { reason: selected.value, reasonDetail: manageOtherReason.value.trim() };
+    }
+
+    function openChangeSelection() {
+      const reservation = manageState.selectedReservation;
       manageChangeArea.classList.remove('hidden');
       manageSelected.innerHTML = `
-        <strong>変更する予約</strong>
+        <strong>変更する利用予定</strong>
         <span>${reservation.date} ${reservation.startTime}-${reservation.endTime}</span>
         <span>${reservation.menuLabel}／${reservation.duration}分</span>
       `;
@@ -1034,6 +1138,34 @@
       manageDateList.innerHTML = '';
       manageTimeList.innerHTML = '';
       setManageStatus('', false);
+    }
+
+    backFromAbsenceButton.addEventListener('click', () => manageAbsenceConfirm.classList.add('hidden'));
+
+    submitAbsenceButton.addEventListener('click', async () => {
+      const reservation = manageState.selectedReservation;
+      if (!reservation) return;
+      let reason;
+      try { reason = getSelectedReason(); } catch (error) { setManageStatus(error.message, true); return; }
+      submitAbsenceButton.disabled = true;
+      setManageStatus('欠席連絡を送信しています...', false);
+      try {
+        const result = await apiCall('submitAbsenceNotice', {
+          reservationToken: state.reservationToken,
+          reservationId: reservation.reservationId,
+          ...reason
+        });
+        if (!result.ok) throw new Error(result.error || '欠席連絡を送信できませんでした。');
+        manageReservations.innerHTML = '';
+        manageActionArea.classList.add('hidden');
+        manageReasonArea.classList.add('hidden');
+        manageAbsenceConfirm.classList.add('hidden');
+        setManageStatus(`${formatManageDate(result.date || reservation.date)}の欠席連絡を受け付けました。ご連絡ありがとうございます。`, false);
+      } catch (error) {
+        setManageStatus(error.message || String(error), true);
+      } finally {
+        submitAbsenceButton.disabled = false;
+      }
     });
 
     manageLoadMonthsButton.addEventListener('click', async () => {
@@ -1108,6 +1240,8 @@
       const button = event.target.closest('button[data-manage-time]');
       if (!button || !manageState.selectedReservation) return;
       const reservation = manageState.selectedReservation;
+      let reason;
+      try { reason = getSelectedReason(); } catch (error) { setManageStatus(error.message, true); return; }
       if (!confirm(`${manageState.selectedDate} ${button.dataset.manageTime}-${button.dataset.manageEnd}へ変更します。よろしいですか？`)) return;
       button.disabled = true;
       setManageStatus('予約を変更しています...', false);
@@ -1116,7 +1250,8 @@
           reservationToken: state.reservationToken,
           reservationId: reservation.reservationId,
           date: manageState.selectedDate,
-          startTime: button.dataset.manageTime
+          startTime: button.dataset.manageTime,
+          ...reason
         });
         if (!result.ok) throw new Error(result.error || '変更できませんでした。');
         manageReservations.innerHTML = '';
@@ -1138,7 +1273,7 @@
       document.querySelector('#title').textContent = appConfig.businessName;
       renderMenus();
 
-      if (state.requestedAction === 'change' || state.requestedAction === 'cancel') {
+      if (state.requestedAction === 'manage' || state.requestedAction === 'change' || state.requestedAction === 'cancel') {
         await initializeManagement();
         return;
       }
