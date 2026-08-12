@@ -1125,6 +1125,9 @@
       document.querySelector('#manageTitle').textContent = '変更・欠席連絡';
       document.querySelector('#manageGuide').textContent =
         '変更・欠席する利用予定を選択してください。予約開始の24時間以内は、直接電話かチャットにてお問い合わせください。';
+      manageReservations.innerHTML =
+        '<div class="empty">現在の予約情報を取得しています。画面を閉じずに少しお待ちください…</div>';
+      setManageStatus('', false);
 
       let result;
       try {
