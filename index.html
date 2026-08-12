@@ -92,6 +92,8 @@
 
     label {
       display: grid;
+      width: 100%;
+      min-width: 0;
       gap: 7px;
       font-size: 19px;
       font-weight: 700;
@@ -116,6 +118,9 @@
 
     input[type="date"] {
       display: block;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       appearance: auto;
       -webkit-appearance: auto;
       text-align: left;
@@ -150,6 +155,8 @@
     }
 
     .row {
+      width: 100%;
+      min-width: 0;
       display: grid;
       grid-template-columns: 1fr;
       gap: 12px;
@@ -1225,8 +1232,9 @@
         manageMonthList.innerHTML = result.months.map((month) =>
           `<button class="pill" type="button" data-manage-month="${month}">${month.replace('-', '年')}月</button>`
         ).join('');
+        setManageStatus('', false);
       } catch (error) {
-        manageMonthList.innerHTML = `<div class="empty">${error.message || error}</div>`;
+        manageMonthList.innerHTML = `<div class="empty">${getCustomerFacingError(error)}</div>`;
       } finally {
         manageLoadMonthsButton.disabled = false;
       }
@@ -1240,17 +1248,22 @@
       const [year, month] = button.dataset.manageMonth.split('-').map(Number);
       const reservation = manageState.selectedReservation;
       manageDateList.innerHTML = '<div class="empty">変更可能日を確認しています...</div>';
-      const result = await apiCall('getReservableDates', {
-        year,
-        month,
-        duration: reservation.duration,
-        menuIds: reservation.menuIds,
-        customerType: reservation.customerType,
-        excludeEventId: reservation.calendarId
-      });
-      manageDateList.innerHTML = result.ok && result.dates.length
-        ? result.dates.map((date) => `<button class="pill" type="button" data-manage-date="${date.value}">${date.label}</button>`).join('')
-        : '<div class="empty">変更可能な日付がありません。</div>';
+      try {
+        const result = await apiCall('getReservableDates', {
+          year,
+          month,
+          duration: reservation.duration,
+          menuIds: reservation.menuIds,
+          customerType: reservation.customerType,
+          excludeEventId: reservation.calendarId
+        });
+        manageDateList.innerHTML = result.ok && result.dates.length
+          ? result.dates.map((date) => `<button class="pill" type="button" data-manage-date="${date.value}">${date.label}</button>`).join('')
+          : '<div class="empty">変更可能な日付がありません。</div>';
+        setManageStatus('', false);
+      } catch (error) {
+        manageDateList.innerHTML = `<div class="empty">${getCustomerFacingError(error)}</div>`;
+      }
     });
 
     manageDateList.addEventListener('click', async (event) => {
@@ -1261,20 +1274,25 @@
       manageState.selectedDate = button.dataset.manageDate;
       const reservation = manageState.selectedReservation;
       manageTimeList.innerHTML = '<div class="empty">変更可能時間を確認しています...</div>';
-      const result = await apiCall('getFreeTimeProposal', {
-        date: manageState.selectedDate,
-        duration: reservation.duration,
-        menuIds: reservation.menuIds,
-        customerType: reservation.customerType,
-        excludeEventId: reservation.calendarId
-      });
-      manageTimeList.innerHTML = result.ok
-        ? result.slots.map((slot) =>
-          `<button class="pill" type="button" data-manage-time="${slot.startTime}" data-manage-end="${slot.endTime}">
-            ${slot.startTime}-${slot.endTime}
-          </button>`
-        ).join('')
-        : `<div class="empty">${result.error || '変更可能な時間がありません。'}</div>`;
+      try {
+        const result = await apiCall('getFreeTimeProposal', {
+          date: manageState.selectedDate,
+          duration: reservation.duration,
+          menuIds: reservation.menuIds,
+          customerType: reservation.customerType,
+          excludeEventId: reservation.calendarId
+        });
+        manageTimeList.innerHTML = result.ok
+          ? result.slots.map((slot) =>
+            `<button class="pill" type="button" data-manage-time="${slot.startTime}" data-manage-end="${slot.endTime}">
+              ${slot.startTime}-${slot.endTime}
+            </button>`
+          ).join('')
+          : `<div class="empty">${result.error || '変更可能な時間がありません。'}</div>`;
+        setManageStatus('', false);
+      } catch (error) {
+        manageTimeList.innerHTML = `<div class="empty">${getCustomerFacingError(error)}</div>`;
+      }
     });
 
     manageTimeList.addEventListener('click', async (event) => {
